@@ -320,7 +320,7 @@ async def _predecir_con_datos(
     home_stats = calcular_medias(home_hist, home_team_id)
     away_stats = calcular_medias(away_hist, away_team_id)
 
-    # ── ELO de ambos equipos ───────────────────────────────────
+    # ── ELO Interno y Ranking FIFA Oficial ─────────────────────
     query_elo = text("""
         SELECT elo_rating FROM team_form
         WHERE team_id = :team_id
@@ -328,9 +328,21 @@ async def _predecir_con_datos(
     """)
     home_elo_row = (await db.execute(query_elo, {"team_id": home_team_id})).fetchone()
     away_elo_row = (await db.execute(query_elo, {"team_id": away_team_id})).fetchone()
-    home_elo = home_elo_row.elo_rating if home_elo_row else 1500.0
-    away_elo = away_elo_row.elo_rating if away_elo_row else 1500.0
+    home_internal_elo = home_elo_row.elo_rating if home_elo_row else 1500.0
+    away_internal_elo = away_elo_row.elo_rating if away_elo_row else 1500.0
+    
+    # Obtener Ranking FIFA Oficial
+    from services.fifa_ranking import fifa_ranking_service
+    home_fifa = fifa_ranking_service.get_team_ranking(home_team_name)
+    away_fifa = fifa_ranking_service.get_team_ranking(away_team_name)
+    
+    # ELO Híbrido: (ELO Interno + Puntos FIFA) / 2
+    home_elo = (home_internal_elo + home_fifa["points"]) / 2.0
+    away_elo = (away_internal_elo + away_fifa["points"]) / 2.0
     elo_diff = home_elo - away_elo
+    
+    # Diferencia de Ranking (Posiciones). Positivo si el Local es mejor (ej. Rank 10 vs Rank 60 -> diff=50)
+    rank_diff = away_fifa["rank"] - home_fifa["rank"]
 
     # ── Impacto de Jugadores (Scraper) ─────────────────────────
     from services.player_impact import player_impact_service
@@ -346,13 +358,17 @@ async def _predecir_con_datos(
     elo_factor_home = max(0.5, 1 + (elo_diff / 800))
     elo_factor_away = max(0.5, 1 - (elo_diff / 800))
     
+    # Impacto de la Posición en el Ranking FIFA (~0.7% por cada puesto de diferencia, max 35%)
+    rank_multiplier_home = max(0.65, min(1.35, 1.0 + (rank_diff * 0.007)))
+    rank_multiplier_away = max(0.65, min(1.35, 1.0 - (rank_diff * 0.007)))
+    
     # Impacto individual puro basado en jugadores (Wikipedia)
     player_mod_home = home_player_impact["offensive_impact"] * (2.0 - away_player_impact["defensive_impact"])
     player_mod_away = away_player_impact["offensive_impact"] * (2.0 - home_player_impact["defensive_impact"])
 
-    # Suavizamos el impacto individual para que no sea tan extremo en el modelo entrenado (30% de peso) y multiplicamos el ELO factor
-    dixon_mod_home = (1.0 + (player_mod_home - 1.0) * 0.3) * elo_factor_home
-    dixon_mod_away = (1.0 + (player_mod_away - 1.0) * 0.3) * elo_factor_away
+    # Suavizamos el impacto individual y multiplicamos el ELO Híbrido y el Multiplicador de Ranking
+    dixon_mod_home = (1.0 + (player_mod_home - 1.0) * 0.3) * elo_factor_home * rank_multiplier_home
+    dixon_mod_away = (1.0 + (player_mod_away - 1.0) * 0.3) * elo_factor_away * rank_multiplier_away
 
     if _dixon_coles.tiene_parametros(home_team_id) and _dixon_coles.tiene_parametros(away_team_id):
         dc_result = _dixon_coles.predecir(
