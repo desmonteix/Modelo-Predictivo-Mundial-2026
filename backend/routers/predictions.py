@@ -342,17 +342,17 @@ async def _predecir_con_datos(
     lambda_home = max(0.5, home_stats["xg"] * home_advantage)
     lambda_away = max(0.5, away_stats["xg"])
 
-    # Ajuste ELO: diferencia de 100 puntos ≈ 10% más goles (SOLO PARA FALLBACK)
-    elo_factor_home = 1 + (elo_diff / 1000)
-    elo_factor_away = 1 - (elo_diff / 1000)
+    # Ajuste suave basado en ELO para corregir diferencias entre confederaciones
+    elo_factor_home = max(0.5, 1 + (elo_diff / 800))
+    elo_factor_away = max(0.5, 1 - (elo_diff / 800))
     
     # Impacto individual puro basado en jugadores (Wikipedia)
     player_mod_home = home_player_impact["offensive_impact"] * (2.0 - away_player_impact["defensive_impact"])
     player_mod_away = away_player_impact["offensive_impact"] * (2.0 - home_player_impact["defensive_impact"])
 
-    # Suavizamos el impacto individual para que no sea tan extremo en el modelo entrenado (30% de peso)
-    dixon_mod_home = 1.0 + (player_mod_home - 1.0) * 0.3
-    dixon_mod_away = 1.0 + (player_mod_away - 1.0) * 0.3
+    # Suavizamos el impacto individual para que no sea tan extremo en el modelo entrenado (30% de peso) y multiplicamos el ELO factor
+    dixon_mod_home = (1.0 + (player_mod_home - 1.0) * 0.3) * elo_factor_home
+    dixon_mod_away = (1.0 + (player_mod_away - 1.0) * 0.3) * elo_factor_away
 
     if _dixon_coles.tiene_parametros(home_team_id) and _dixon_coles.tiene_parametros(away_team_id):
         dc_result = _dixon_coles.predecir(
@@ -379,8 +379,9 @@ async def _predecir_con_datos(
     # PERO, si el impacto de jugadores modifica drásticamente los goles esperados
     # (ej. goles > 2.5), forzamos a que Dixon-Coles dicte las probabilidades
     # ya que XGBoost ignora el player_impact_service.
+    # XGBoost usa ELO y stats combinadas, así que corrige el sesgo regional.
     dixon_probs = dc_result["result_1x2_dixon"]
-    usar_xgboost = _ensemble_1x2.entrenado and abs(elo_diff) < 250 and len(home_hist) >= 3 and len(away_hist) >= 3
+    usar_xgboost = _ensemble_1x2.entrenado and len(home_hist) >= 3 and len(away_hist) >= 3
     
     if usar_xgboost and dc_result["goals_home"]["value"] < 2.5 and dc_result["goals_away"]["value"] < 2.5:
         # Features: 'elo_diff', 'xg_diff', 'xga_diff', 'corners_diff', 'clean_sheets_diff', 'home_injury', 'away_injury'

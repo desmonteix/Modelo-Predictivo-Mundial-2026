@@ -4,8 +4,8 @@ import httpx
 async def main():
     async with httpx.AsyncClient() as client:
         res = await client.post("http://predictor_api:8000/api/v1/predict", json={
-            "home_team_name": "France",
-            "away_team_name": "Senegal",
+            "home_team_name": "Mexico",
+            "away_team_name": "South Africa",
             "league_name": "FIFA World Cup",
             "match_stage": "Group Stage",
             "is_neutral": True
