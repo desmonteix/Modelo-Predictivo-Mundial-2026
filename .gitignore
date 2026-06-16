@@ -1,0 +1,13 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+.env.*
+postgres_data/
+redis_data/
+.venv/
+venv/
+backend/data/player_stats_cache.json
+dist/
+build/
+.DS_Store

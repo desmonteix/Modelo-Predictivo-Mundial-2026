@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────
+# PREDICTOR FÚTBOL — Backend Dependencies
+# Python 3.11+
+# ─────────────────────────────────────────────────────────
+
+# ── API Framework ─────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# ── Base de datos ─────────────────────────────────────────
+sqlalchemy==2.0.30
+asyncpg==0.29.0          # driver async PostgreSQL
+alembic==1.13.1          # migraciones
+psycopg2-binary==2.9.9   # driver sync (para scripts de seed)
+
+# ── Caché ─────────────────────────────────────────────────
+redis==5.0.4
+aioredis==2.0.1
+
+# ── Validación / Serialización ────────────────────────────
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# ── Machine Learning ──────────────────────────────────────
+scikit-learn==1.4.2
+xgboost==2.0.3
+statsmodels==0.14.2
+scipy==1.13.0
+numpy==1.26.4
+pandas==2.2.2
+
+# ── Optimización de hiperparámetros ───────────────────────
+optuna==3.6.1
+
+# ── HTTP cliente (para APIs externas) ─────────────────────
+httpx==0.27.0
+aiohttp==3.9.5
+beautifulsoup4==4.12.3
+
+# ── Persistencia de modelos ───────────────────────────────
+joblib==1.4.2
+
+# ── Utilidades ────────────────────────────────────────────
+python-dateutil==2.9.0
+pytz==2024.1
+structlog==24.1.0          # logging estructurado
+tenacity==8.3.0            # reintentos con backoff
+
+# ── Tests ─────────────────────────────────────────────────
+pytest==8.2.0
+pytest-asyncio==0.23.6
+httpx==0.27.0              # test client FastAPI

@@ -1,0 +1,101 @@
+version: "3.9"
+
+services:
+  # ─────────────────────────────────────────────
+  # Base de datos principal
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: predictor_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-predictor_futbol}
+      POSTGRES_USER: ${POSTGRES_USER:-predictor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predictor_pass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-predictor} -d ${POSTGRES_DB:-predictor_futbol}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Caché — features y predicciones recientes
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: predictor_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # API Backend — FastAPI
+  # ─────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: predictor_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-predictor}:${POSTGRES_PASSWORD:-predictor_pass}@postgres:5432/${POSTGRES_DB:-predictor_futbol}
+      REDIS_URL: redis://redis:6379/0
+      FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+      LAMBDA_DECAY: ${LAMBDA_DECAY:-0.02}
+      PESO_MINIMO: ${PESO_MINIMO:-0.05}
+      UMBRAL_TEMPORADAS: ${UMBRAL_TEMPORADAS:-5}
+      RESET_ON_COACH_CHANGE: ${RESET_ON_COACH_CHANGE:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      ENV: ${ENV:-development}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - model_artifacts:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────
+  # Frontend — React + Vite
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: predictor_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  model_artifacts:
